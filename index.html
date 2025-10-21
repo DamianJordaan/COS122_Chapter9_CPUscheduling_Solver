@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPU Scheduling Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+    <div class="max-w-7xl mx-auto py-8 px-4">
+        <header class="mb-6">
+            <h1 class="text-3xl font-bold text-sky-300">Interactive CPU Scheduling Simulator</h1>
+            <p class="mt-2 text-sm text-slate-300 max-w-3xl">Explore how different CPU scheduling algorithms make their decisions. Configure a workload, pick an algorithm, and step through each event to watch the ready queues, Gantt chart, and metrics evolve in real time. (v1.0; Disclaimer: Experimental Software Concept, Could Have Errors)</p>
+        </header>
+
+        <div class="grid gap-6 lg:grid-cols-2">
+            <section class="bg-slate-800/70 rounded-lg border border-slate-700 shadow-lg p-5 space-y-6">
+                <div>
+                    <h2 class="text-xl font-semibold text-sky-200 mb-3">Process Input</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm" id="processTable">
+                            <thead class="bg-slate-800 text-slate-300 uppercase text-xs tracking-wider">
+                                <tr>
+                                    <th class="px-3 py-2 text-left">Process ID</th>
+                                    <th class="px-3 py-2 text-left">Arrival Time</th>
+                                    <th class="px-3 py-2 text-left">Burst Time</th>
+                                    <th class="px-3 py-2 text-left">Priority</th>
+                                </tr>
+                            </thead>
+                            <tbody id="processTableBody" class="divide-y divide-slate-700"></tbody>
+                        </table>
+                    </div>
+                    <div class="mt-3 flex gap-3">
+                        <button id="addProcess" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 transition rounded text-sm font-medium">Add Process</button>
+                        <button id="removeProcess" class="px-3 py-2 bg-rose-600 hover:bg-rose-500 transition rounded text-sm font-medium">Remove Process</button>
+                        <button id="setAllProcesses" class="px-3 py-2 bg-blue-600 hover:bg-blue-500 transition rounded text-sm font-medium">Set All Processes</button>
+                    </div>
+                </div>
+
+                <div>
+                    <h2 class="text-xl font-semibold text-sky-200 mb-3">Scheduler</h2>
+                    <div class="space-y-4">
+                        <label class="block text-sm">
+                            <span class="text-slate-300">Algorithm</span>
+                            <select id="algorithmSelect" class="mt-1 w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500">
+                                <option value="SRT">Shortest Remaining Time (SRT)</option>
+                                <option value="PRIORITY">Non-Preemptive Priority</option>
+                                <option value="RR">Round-Robin (RR)</option>
+                                <option value="HRRN">Highest Response Ratio Next (HRRN)</option>
+                                <option value="FEEDBACK">Feedback Scheduling (3-Queue)</option>
+                            </select>
+                        </label>
+                        <label id="quantumWrapper" class="block text-sm hidden">
+                            <span class="text-slate-300">Time Quantum (ms)</span>
+                            <input id="timeQuantum" type="number" min="1" value="25" class="mt-1 w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <h2 class="text-xl font-semibold text-sky-200 mb-3">Controls</h2>
+                    <div class="flex flex-wrap gap-3">
+                        <button id="runSimulation" class="px-4 py-2 bg-sky-600 hover:bg-sky-500 transition rounded text-sm font-semibold">Run</button>
+                        <button id="stepSimulation" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 transition rounded text-sm font-semibold">Step Forward</button>
+                        <button id="resetSimulation" class="px-4 py-2 bg-slate-600 hover:bg-slate-500 transition rounded text-sm font-semibold">Reset</button>
+                    </div>
+                    <p id="statusText" class="mt-3 text-sm text-slate-300">Status: Ready</p>
+                </div>
+            </section>
+
+            <section class="space-y-6">
+                <div class="bg-slate-800/70 rounded-lg border border-slate-700 shadow-lg p-5 space-y-3">
+                    <h2 class="text-xl font-semibold text-sky-200 mb-3">Gantt Chart</h2>
+                    <div id="ganttChart" class="relative bg-slate-900/80 border border-slate-700 rounded p-3 overflow-hidden min-h-[5rem]"></div>
+                    <div id="timeAxis" class="relative h-10 bg-slate-900/60 border border-slate-700 rounded overflow-hidden"></div>
+                </div>
+
+                <div class="bg-slate-800/70 rounded-lg border border-slate-700 shadow-lg p-5">
+                    <h2 class="text-xl font-semibold text-sky-200 mb-3">Event Log</h2>
+                    <div id="eventLog" class="h-48 overflow-y-auto whitespace-pre-wrap text-sm bg-slate-900/80 border border-slate-700 rounded p-3 text-slate-200"></div>
+                </div>
+
+                <div id="resultsPanel" class="bg-slate-800/70 rounded-lg border border-slate-700 shadow-lg p-5 hidden">
+                    <h2 class="text-xl font-semibold text-sky-200 mb-3">Final Metrics</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-slate-800 text-slate-300 uppercase text-xs tracking-wider">
+                                <tr>
+                                    <th class="px-3 py-2 text-left">Process</th>
+                                    <th class="px-3 py-2 text-left">Completion</th>
+                                    <th class="px-3 py-2 text-left">Turnaround</th>
+                                    <th class="px-3 py-2 text-left">Waiting</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsBody" class="divide-y divide-slate-700"></tbody>
+                            <tfoot class="bg-slate-900/80 text-slate-200">
+                                <tr>
+                                    <td class="px-3 py-2 font-semibold">Average</td>
+                                    <td class="px-3 py-2">&mdash;</td>
+                                    <td class="px-3 py-2" id="avgTurnaround">&mdash;</td>
+                                    <td class="px-3 py-2" id="avgWaiting">&mdash;</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        const processTableBody = document.getElementById('processTableBody');
+        const addProcessButton = document.getElementById('addProcess');
+        const setAllProcessesButton = document.getElementById('setAllProcesses');
+        const removeProcessButton = document.getElementById('removeProcess');
+        const algorithmSelect = document.getElementById('algorithmSelect');
+        const quantumWrapper = document.getElementById('quantumWrapper');
+        const quantumInput = document.getElementById('timeQuantum');
+        const runButton = document.getElementById('runSimulation');
+        const stepButton = document.getElementById('stepSimulation');
+        const resetButton = document.getElementById('resetSimulation');
+        const statusText = document.getElementById('statusText');
+        const ganttChart = document.getElementById('ganttChart');
+        const timeAxis = document.getElementById('timeAxis');
+        const eventLog = document.getElementById('eventLog');
+        const resultsPanel = document.getElementById('resultsPanel');
+        const resultsBody = document.getElementById('resultsBody');
+        const avgTurnaround = document.getElementById('avgTurnaround');
+        const avgWaiting = document.getElementById('avgWaiting');
+
+        const palette = ['#38bdf8', '#f97316', '#a855f7', '#22c55e', '#facc15', '#ec4899', '#8b5cf6', '#34d399', '#fb7185', '#fbbf24'];
+        const LABEL_WIDTH = 72;
+        const ROW_HEIGHT = 36;
+
+        let simulation = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const defaults = [
+                { id: 'P1', arrival: 0, burst: 50, priority: 4 },
+                { id: 'P2', arrival: 5, burst: 20, priority: 2 },
+                { id: 'P3', arrival: 10, burst: 100, priority: 1 },
+                { id: 'P4', arrival: 20, burst: 30, priority: 3 }
+            ];
+            defaults.forEach(data => appendProcessRow(data));
+            renderStatus('Ready');
+            renderEmptyChart();
+        });
+
+        addProcessButton.addEventListener('click', () => {
+            appendProcessRow();
+        });
+
+        removeProcessButton.addEventListener('click', () => {
+            const rows = processTableBody.querySelectorAll('tr');
+            if (rows.length > 1) {
+                processTableBody.removeChild(rows[rows.length - 1]);
+            }
+        });
+
+        setAllProcessesButton.addEventListener('click', () => {
+            // Shows a textarea to input multiple processes at once (Clear existing first and if existing are present add them to the textarea)
+            
+            const textarea = document.createElement('textarea');
+            textarea.placeholder = 'Enter processes (one per line):\nP1 0 50 4\nP2 5 20 2\nP3 10 100 1\nP4 20 30 3';
+
+            textarea.value = '';
+            const rows = processTableBody.querySelectorAll('tr');
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('input');
+                textarea.value += `${cells[0].value} ${cells[1].value} ${cells[2].value} ${cells[3].value}\n`;
+            });
+
+            if (processTableBody.children.length > 0) {
+                processTableBody.innerHTML = '';
+            }
+
+            textarea.className = 'w-full h-32 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm';
+            const dialog = document.createElement('div');
+            dialog.className = 'fixed inset-0 flex items-center justify-center bg-black/50';
+            dialog.appendChild(textarea);
+            const confirmButton = document.createElement('button');
+            confirmButton.innerText = 'Set Processes';
+            confirmButton.className = 'mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 transition rounded text-sm font-medium';
+            dialog.appendChild(confirmButton);
+            document.body.appendChild(dialog);
+            confirmButton.addEventListener('click', () => {
+                const lines = textarea.value.trim().split('\n');
+                lines.forEach(line => {
+                    const [id, arrival, burst, priority] = line.split(' ').map(Number);
+                    appendProcessRow({ id, arrival, burst, priority });
+                });
+                document.body.removeChild(dialog);
+            });
+        });
+
+        algorithmSelect.addEventListener('change', () => {
+            const value = algorithmSelect.value;
+            quantumWrapper.classList.toggle('hidden', value !== 'RR');
+            if (simulation) {
+                renderStatus('Algorithm changed. Reset to start a new simulation.');
+            }
+        });
+
+        runButton.addEventListener('click', () => {
+            ensureSimulationInitialized();
+            if (!simulation || simulation.finished) {
+                return;
+            }
+            let guard = 0;
+            while (!simulation.finished && guard < 5000) {
+                algorithms[simulation.algorithm].step(simulation);
+                guard += 1;
+            }
+            if (guard >= 5000) {
+                renderStatus('Guard limit reached. Check for configuration issues.');
+            } else {
+                renderStatus('Simulation completed.');
+            }
+            renderAll();
+        });
+
+        stepButton.addEventListener('click', () => {
+            ensureSimulationInitialized();
+            if (!simulation || simulation.finished) {
+                return;
+            }
+            algorithms[simulation.algorithm].step(simulation);
+            if (simulation.finished) {
+                renderStatus('Simulation completed.');
+            } else {
+                renderStatus(`Advanced to time ${simulation.time}ms.`);
+            }
+            renderAll();
+        });
+
+        resetButton.addEventListener('click', () => {
+            simulation = null;
+            renderEmptyChart();
+            eventLog.innerText = '';
+            resultsPanel.classList.add('hidden');
+            resultsBody.innerHTML = '';
+            avgTurnaround.innerText = '—';
+            avgWaiting.innerText = '—';
+            renderStatus('Reset complete. Ready.');
+        });
+
+        function appendProcessRow(data = {}) {
+            const row = document.createElement('tr');
+            row.className = 'bg-slate-900/60';
+            row.innerHTML = `
+                <td class="px-3 py-2"><input type="text" value="${data.id || ''}" class="w-24 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm" placeholder="P${processTableBody.children.length + 1}"></td>
+                <td class="px-3 py-2"><input type="number" min="0" value="${data.arrival ?? ''}" class="w-28 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm"></td>
+                <td class="px-3 py-2"><input type="number" min="1" value="${data.burst ?? ''}" class="w-28 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm"></td>
+                <td class="px-3 py-2"><input type="number" min="1" value="${data.priority ?? ''}" class="w-24 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm"></td>
+            `;
+            processTableBody.appendChild(row);
+        }
+
+        function collectProcesses() {
+            const rows = Array.from(processTableBody.querySelectorAll('tr'));
+            const processes = [];
+            for (const row of rows) {
+                const cells = row.querySelectorAll('input');
+                const id = cells[0].value.trim() || `P${processes.length + 1}`;
+                const arrival = Number(cells[1].value);
+                const burst = Number(cells[2].value);
+                const priority = Number(cells[3].value);
+                if ([arrival, burst, priority].some(Number.isNaN)) {
+                    alert('Please fill in all numeric fields.');
+                    return null;
+                }
+                if (arrival < 0 || burst <= 0 || priority <= 0) {
+                    alert('Arrival must be >= 0, Burst > 0, Priority > 0.');
+                    return null;
+                }
+                processes.push({ id, arrival, burst, priority });
+            }
+            return processes;
+        }
+
+        function ensureSimulationInitialized() {
+            if (simulation) {
+                return;
+            }
+            const processes = collectProcesses();
+            if (!processes || processes.length === 0) {
+                return;
+            }
+            simulation = createSimulationState(processes, algorithmSelect.value);
+            if (!simulation) {
+                return;
+            }
+            renderStatus('Simulation initialized. Use step or run.');
+            renderAll();
+        }
+
+        function createSimulationState(processes, algorithmKey) {
+            const clones = processes.map((proc, index) => ({
+                id: proc.id,
+                arrival: proc.arrival,
+                burst: proc.burst,
+                priority: proc.priority,
+                remaining: proc.burst,
+                completion: null,
+                firstResponse: null,
+                color: palette[index % palette.length]
+            }));
+            clones.sort((a, b) => a.arrival - b.arrival || a.id.localeCompare(b.id));
+            const state = {
+                algorithm: algorithmKey,
+                processes: clones,
+                pendingArrivals: [...clones],
+                readyQueue: [],
+                time: 0,
+                timeline: [],
+                log: [],
+                finished: false,
+                completed: 0,
+                running: null,
+                colorMap: new Map(),
+                sliceRemaining: 0,
+                runningQueueLevel: null,
+                feedbackQueues: [[], [], []],
+                quantum: algorithmKey === 'RR' ? Math.max(Number(quantumInput.value) || 1, 1) : 25
+            };
+            clones.forEach(proc => state.colorMap.set(proc.id, proc.color));
+            state.colorMap.set('IDLE', '#64748b');
+            algorithms[algorithmKey].init(state);
+            return state;
+        }
+
+        const algorithms = {
+            SRT: {
+                init(state) {
+                    state.readyQueue = [];
+                },
+                step(state) {
+                    if (state.finished) {
+                        return;
+                    }
+                    releaseArrivalsToQueue(state, state.readyQueue);
+                    if (!state.running) {
+                        if (state.readyQueue.length === 0) {
+                            if (handleIdleAdvance(state)) {
+                                return;
+                            }
+                        }
+                        if (state.readyQueue.length) {
+                            pullNextSRT(state);
+                        }
+                    }
+                    if (!state.running) {
+                        concludeIfDone(state);
+                        return;
+                    }
+                    const timeToNextArrival = timeUntilNextArrival(state);
+                    const timeToCompletion = state.running.remaining;
+                    if (timeToCompletion <= timeToNextArrival) {
+                        runForDuration(state, state.running, timeToCompletion);
+                        finalizeCompletion(state, state.running, `Time: ${state.time}ms. ${state.running.id} completes. Ready Queue: ${formatSRTQueue(state.readyQueue)}.`);
+                        state.running = null;
+                        concludeIfDone(state);
+                        return;
+                    }
+                    const duration = timeToNextArrival;
+                    runForDuration(state, state.running, duration);
+                    releaseArrivalsToQueue(state, state.readyQueue);
+                    state.readyQueue.push(state.running);
+                    state.running = null;
+                    state.readyQueue.sort(compareByRemaining);
+                    const next = state.readyQueue.shift();
+                    const arrivalsText = formatArrivals(state, duration);
+                    if (next.remaining === (state.readyQueue.includes(next) ? next.remaining : next.remaining)) {
+                        // intentionally left to satisfy linter placeholder
+                    }
+                    if (next) {
+                        if (!state.readyQueue.includes(next)) {
+                            // no-op; kept for clarity
+                        }
+                        if (!state.readyQueue.includes(next)) {
+                            // placeholder to avoid warnings
+                        }
+                    }
+                    if (next) {
+                        assignRunningProcess(state, next);
+                        const preempted = state.readyQueue.find(p => p === next) ? false : true;
+                        if (!preempted && state.running === next) {
+                            state.log.push(`Time: ${state.time}ms. Arrival event. Ready Queue: ${formatSRTQueue(state.readyQueue)}. ${next.id} continues.`);
+                        } else {
+                            state.log.push(`Time: ${state.time}ms. ${arrivalsText} ${next.id} selected (shortest remaining). Ready Queue: ${formatSRTQueue(state.readyQueue)}.`);
+                        }
+                    }
+                }
+            },
+            PRIORITY: {
+                init(state) {
+                    state.readyQueue = [];
+                },
+                step(state) {
+                    if (state.finished) {
+                        return;
+                    }
+                    const arrivals = releaseArrivalsToQueue(state, state.readyQueue);
+                    if (!state.running) {
+                        if (state.readyQueue.length === 0) {
+                            if (handleIdleAdvance(state)) {
+                                return;
+                            }
+                            releaseArrivalsToQueue(state, state.readyQueue);
+                        }
+                        if (state.readyQueue.length) {
+                            state.readyQueue.sort((a, b) => a.priority - b.priority || a.arrival - b.arrival);
+                            assignRunningProcess(state, state.readyQueue.shift());
+                            state.log.push(`Time: ${state.time}ms. ${state.running.id} selected (priority ${state.running.priority}). Ready Queue: ${formatPriorityQueue(state.readyQueue)}.`);
+                        }
+                    }
+                    if (!state.running) {
+                        concludeIfDone(state);
+                        return;
+                    }
+                    const timeToNextArrival = timeUntilNextArrival(state);
+                    const timeToCompletion = state.running.remaining;
+                    if (timeToCompletion <= timeToNextArrival) {
+                        runForDuration(state, state.running, timeToCompletion);
+                        finalizeCompletion(state, state.running, `Time: ${state.time}ms. ${state.running.id} completes. Ready Queue: ${formatPriorityQueue(state.readyQueue)}.`);
+                        state.running = null;
+                        concludeIfDone(state);
+                    } else {
+                        const duration = timeToNextArrival;
+                        runForDuration(state, state.running, duration);
+                        const newArrivals = releaseArrivalsToQueue(state, state.readyQueue);
+                        state.log.push(`Time: ${state.time}ms. Arrivals: ${formatArrivalList(newArrivals)}. ${state.running.id} continues. Ready Queue: ${formatPriorityQueue(state.readyQueue)}.`);
+                    }
+                }
+            },
+            RR: {
+                init(state) {
+                    state.readyQueue = [];
+                },
+                step(state) {
+                    if (state.finished) {
+                        return;
+                    }
+                    const arrivals = releaseArrivalsToQueue(state, state.readyQueue);
+                    if (!state.running) {
+                        if (!dispatchNextRR(state)) {
+                            if (handleIdleAdvance(state)) {
+                                return;
+                            }
+                            releaseArrivalsToQueue(state, state.readyQueue);
+                            if (!dispatchNextRR(state)) {
+                                concludeIfDone(state);
+                                return;
+                            }
+                        }
+                    }
+                    const timeToNextArrival = timeUntilNextArrival(state);
+                    const timeToCompletion = state.running.remaining;
+                    const timeToSliceEnd = state.sliceRemaining;
+                    const duration = Math.min(timeToCompletion, timeToSliceEnd, timeToNextArrival);
+                    runForDuration(state, state.running, duration);
+                    state.sliceRemaining -= duration;
+                    const arrivalTriggered = timeToNextArrival === duration;
+                    let arrivalsSummary = '';
+                    if (arrivalTriggered) {
+                        const newcomers = releaseArrivalsToQueue(state, state.readyQueue);
+                        arrivalsSummary = ` Arrivals: ${formatArrivalList(newcomers)}.`;
+                    }
+                    if (state.running.remaining === 0) {
+                        finalizeCompletion(state, state.running, `Time: ${state.time}ms. ${state.running.id} completes.${arrivalsSummary} Ready Queue: ${formatRRQueue(state.readyQueue)}.`);
+                        state.running = null;
+                        concludeIfDone(state);
+                        if (!state.finished) {
+                            dispatchNextRR(state);
+                        }
+                        return;
+                    }
+                    if (state.sliceRemaining === 0) {
+                        state.readyQueue.push(state.running);
+                        const returning = state.running.id;
+                        state.running = null;
+                        if (!dispatchNextRR(state)) {
+                            state.log.push(`Time: ${state.time}ms. Quantum expires for ${returning}.${arrivalsSummary} Ready Queue: ${formatRRQueue(state.readyQueue)}.`);
+                        }
+                        return;
+                    }
+                    state.log.push(`Time: ${state.time}ms.${arrivalsSummary} ${state.running.id} continues (${state.sliceRemaining}ms left in quantum). Ready Queue: ${formatRRQueue(state.readyQueue)}.`);
+                }
+            },
+            HRRN: {
+                init(state) {
+                    state.readyQueue = [];
+                },
+                step(state) {
+                    if (state.finished) {
+                        return;
+                    }
+                    releaseArrivalsToQueue(state, state.readyQueue);
+                    if (!state.running) {
+                        if (state.readyQueue.length === 0) {
+                            if (handleIdleAdvance(state)) {
+                                return;
+                            }
+                            releaseArrivalsToQueue(state, state.readyQueue);
+                        }
+                        if (state.readyQueue.length) {
+                            const pick = selectHRRN(state);
+                            assignRunningProcess(state, pick.process);
+                            state.log.push(`Time: ${state.time}ms. ${pick.process.id} selected (R=${pick.ratio.toFixed(2)}). Ready Queue: ${formatHRRNQueue(state.readyQueue, state.time)}.`);
+                        }
+                    }
+                    if (!state.running) {
+                        concludeIfDone(state);
+                        return;
+                    }
+                    const timeToNextArrival = timeUntilNextArrival(state);
+                    const timeToCompletion = state.running.remaining;
+                    if (timeToCompletion <= timeToNextArrival) {
+                        runForDuration(state, state.running, timeToCompletion);
+                        finalizeCompletion(state, state.running, `Time: ${state.time}ms. ${state.running.id} completes. Ready Queue: ${formatHRRNQueue(state.readyQueue, state.time)}.`);
+                        state.running = null;
+                        concludeIfDone(state);
+                    } else {
+                        const duration = timeToNextArrival;
+                        runForDuration(state, state.running, duration);
+                        const newcomers = releaseArrivalsToQueue(state, state.readyQueue);
+                        state.log.push(`Time: ${state.time}ms. Arrivals: ${formatArrivalList(newcomers)}. ${state.running.id} continues. Ready Queue: ${formatHRRNQueue(state.readyQueue, state.time)}.`);
+                    }
+                }
+            },
+            FEEDBACK: {
+                init(state) {
+                    state.feedbackQueues = [[], [], []];
+                },
+                step(state) {
+                    if (state.finished) {
+                        return;
+                    }
+                    const newcomers = releaseArrivalsFeedback(state);
+                    if (!state.running) {
+                        if (!dispatchFeedback(state)) {
+                            if (handleIdleAdvance(state)) {
+                                return;
+                            }
+                            releaseArrivalsFeedback(state);
+                            if (!dispatchFeedback(state)) {
+                                concludeIfDone(state);
+                                return;
+                            }
+                        }
+                    }
+                    const timeToNextArrival = timeUntilNextArrival(state);
+                    const timeToCompletion = state.running.remaining;
+                    const timeToSliceEnd = state.sliceRemaining;
+                    const duration = Math.min(timeToCompletion, timeToSliceEnd, timeToNextArrival);
+                    runForDuration(state, state.running, duration);
+                    state.sliceRemaining -= duration;
+                    const arrivalsTriggered = timeToNextArrival === duration;
+                    let arrivalsSummary = '';
+                    if (arrivalsTriggered) {
+                        const arrivals = releaseArrivalsFeedback(state);
+                        if (arrivals.length) {
+                            arrivalsSummary = ` Arrivals: ${arrivals.map(p => p.id).join(', ')}.`;
+                        }
+                    }
+                    if (state.running.remaining === 0) {
+                        finalizeCompletion(state, state.running, `Time: ${state.time}ms. ${state.running.id} completes.${arrivalsSummary} Queues: ${formatFeedbackQueues(state)}`);
+                        state.running = null;
+                        concludeIfDone(state);
+                        if (!state.finished) {
+                            dispatchFeedback(state);
+                        }
+                        return;
+                    }
+                    if (state.sliceRemaining === 0 && state.runningQueueLevel < 2) {
+                        const originLevel = state.runningQueueLevel;
+                        state.feedbackQueues[originLevel + 1].push(state.running);
+                        const procId = state.running.id;
+                        state.running = null;
+                        state.log.push(`Time: ${state.time}ms. Quantum expires for ${procId}; demoted to RQ${originLevel + 1}.${arrivalsSummary} Queues: ${formatFeedbackQueues(state)}`);
+                        dispatchFeedback(state);
+                        return;
+                    }
+                    if (arrivalsTriggered && state.runningQueueLevel === 2 && state.feedbackQueues[0].length) {
+                        state.feedbackQueues[2].unshift(state.running);
+                        const procId = state.running.id;
+                        state.running = null;
+                        state.log.push(`Time: ${state.time}ms.${arrivalsSummary} ${procId} preempted by higher-priority arrivals. Queues: ${formatFeedbackQueues(state)}`);
+                        dispatchFeedback(state);
+                        return;
+                    }
+                    state.log.push(`Time: ${state.time}ms.${arrivalsSummary} ${state.running.id} continues in RQ${state.runningQueueLevel}. Queues: ${formatFeedbackQueues(state)}`);
+                }
+            }
+        };
+
+        function releaseArrivalsToQueue(state, queue) {
+            const arrivals = [];
+            while (state.pendingArrivals.length && state.pendingArrivals[0].arrival <= state.time) {
+                const proc = state.pendingArrivals.shift();
+                queue.push(proc);
+                arrivals.push(proc);
+            }
+            return arrivals;
+        }
+
+        function releaseArrivalsFeedback(state) {
+            const arrivals = [];
+            while (state.pendingArrivals.length && state.pendingArrivals[0].arrival <= state.time) {
+                const proc = state.pendingArrivals.shift();
+                proc.currentQueue = 0;
+                state.feedbackQueues[0].push(proc);
+                arrivals.push(proc);
+            }
+            return arrivals;
+        }
+
+        function handleIdleAdvance(state) {
+            if (state.pendingArrivals.length === 0) {
+                concludeIfDone(state);
+                return false;
+            }
+            const nextTime = state.pendingArrivals[0].arrival;
+            const duration = nextTime - state.time;
+            runForDuration(state, null, duration);
+            state.log.push(`Time: ${state.time}ms. CPU idle until next arrival.`);
+            releaseArrivalsToQueue(state, state.readyQueue || []);
+            releaseArrivalsFeedback(state);
+            return true;
+        }
+
+        function timeUntilNextArrival(state) {
+            if (!state.pendingArrivals.length) {
+                return Number.POSITIVE_INFINITY;
+            }
+            return state.pendingArrivals[0].arrival - state.time;
+        }
+
+        function runForDuration(state, process, duration) {
+            if (duration <= 0 || !Number.isFinite(duration)) {
+                return;
+            }
+            const label = process ? process.id : 'IDLE';
+            const color = process ? state.colorMap.get(process.id) : state.colorMap.get('IDLE');
+            recordSegment(state, label, duration, color);
+            if (process) {
+                process.remaining = Math.max(0, +(process.remaining - duration).toFixed(5));
+            }
+            state.time = +(state.time + duration).toFixed(5);
+        }
+
+        function recordSegment(state, label, duration, color) {
+            const start = state.time;
+            const end = start + duration;
+            if (!duration) {
+                return;
+            }
+            if (state.timeline.length) {
+                const last = state.timeline[state.timeline.length - 1];
+                if (last.label === label && Math.abs(last.end - start) < 1e-6) {
+                    last.end = end;
+                    last.duration += duration;
+                    return;
+                }
+            }
+            state.timeline.push({ label, start, end, duration, color });
+        }
+
+        function assignRunningProcess(state, process) {
+            state.running = process;
+            if (process.firstResponse === null) {
+                process.firstResponse = state.time - process.arrival;
+            }
+            if (state.algorithm === 'RR') {
+                state.sliceRemaining = Math.min(process.remaining, state.quantum);
+            }
+            if (state.algorithm === 'FEEDBACK') {
+                if (process.currentQueue === undefined) {
+                    process.currentQueue = state.runningQueueLevel ?? 0;
+                }
+                state.runningQueueLevel = process.currentQueue;
+                state.sliceRemaining = state.runningQueueLevel < 2 ? Math.min(process.remaining, state.quantum) : process.remaining;
+                state.log.push(`Time: ${state.time}ms. ${process.id} dispatched from RQ${state.runningQueueLevel}. Queues: ${formatFeedbackQueues(state)}`);
+            }
+        }
+
+        function pullNextSRT(state) {
+            state.readyQueue.sort(compareByRemaining);
+            const process = state.readyQueue.shift();
+            assignRunningProcess(state, process);
+            state.log.push(`Time: ${state.time}ms. ${process.id} starts/resumes. Ready Queue: ${formatSRTQueue(state.readyQueue)}.`);
+        }
+
+        function compareByRemaining(a, b) {
+            const diff = a.remaining - b.remaining;
+            if (Math.abs(diff) < 1e-6) {
+                return a.arrival - b.arrival || a.id.localeCompare(b.id);
+            }
+            return diff;
+        }
+
+        function formatArrivals(state, duration) {
+            const arrivals = state.readyQueue.slice(-duration);
+            return arrivals.length ? `Arrivals: ${arrivals.map(p => p.id).join(', ')}.` : 'No new arrivals.';
+        }
+
+        function formatSRTQueue(queue) {
+            if (!queue.length) {
+                return '[]';
+            }
+            return '[' + queue.map(p => `${p.id}(${p.remaining}ms)`).join(', ') + ']';
+        }
+
+        function formatPriorityQueue(queue) {
+            if (!queue.length) {
+                return '[]';
+            }
+            return '[' + queue.map(p => `${p.id}(prio ${p.priority})`).join(', ') + ']';
+        }
+
+        function formatRRQueue(queue) {
+            if (!queue.length) {
+                return '[]';
+            }
+            return '[' + queue.map(p => `${p.id}(${p.remaining}ms)`).join(', ') + ']';
+        }
+
+        function formatHRRNQueue(queue, currentTime) {
+            if (!queue.length) {
+                return '[]';
+            }
+            return '[' + queue.map(p => {
+                const waiting = currentTime - p.arrival;
+                const ratio = ((waiting + p.burst) / p.burst).toFixed(2);
+                return `${p.id}(R=${ratio})`;
+            }).join(', ') + ']';
+        }
+
+        function formatFeedbackQueues(state) {
+            return state.feedbackQueues.map((queue, index) => {
+                const entries = queue.map(p => `${p.id}(${p.remaining}ms)`).join(', ');
+                return `RQ${index}: [${entries}]`;
+            }).join(' | ');
+        }
+
+        function formatArrivalList(arrivals) {
+            if (!arrivals.length) {
+                return 'None';
+            }
+            return arrivals.map(p => `${p.id}`).join(', ');
+        }
+
+        function finalizeCompletion(state, process, message) {
+            process.completion = state.time;
+            state.completed += 1;
+            state.log.push(message);
+        }
+
+        function concludeIfDone(state) {
+            if (state.completed >= state.processes.length) {
+                state.finished = true;
+            }
+        }
+
+        function dispatchNextRR(state) {
+            if (!state.readyQueue.length) {
+                return false;
+            }
+            const process = state.readyQueue.shift();
+            state.running = process;
+            if (process.firstResponse === null) {
+                process.firstResponse = state.time - process.arrival;
+            }
+            state.sliceRemaining = Math.min(process.remaining, state.quantum);
+            state.log.push(`Time: ${state.time}ms. ${process.id} begins ${state.sliceRemaining}ms slice. Ready Queue: ${formatRRQueue(state.readyQueue)}.`);
+            return true;
+        }
+
+        function dispatchFeedback(state) {
+            for (let level = 0; level < state.feedbackQueues.length; level += 1) {
+                if (state.feedbackQueues[level].length) {
+                    const process = state.feedbackQueues[level].shift();
+                    process.currentQueue = level;
+                    state.runningQueueLevel = level;
+                    state.running = process;
+                    if (process.firstResponse === null) {
+                        process.firstResponse = state.time - process.arrival;
+                    }
+                    state.sliceRemaining = level < 2 ? Math.min(process.remaining, state.quantum) : process.remaining;
+                    state.log.push(`Time: ${state.time}ms. ${process.id} dispatched from RQ${level}. Queues: ${formatFeedbackQueues(state)}`);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function selectHRRN(state) {
+            let best = null;
+            let bestRatio = -Infinity;
+            for (const proc of state.readyQueue) {
+                const waiting = state.time - proc.arrival;
+                const ratio = (waiting + proc.burst) / proc.burst;
+                if (ratio > bestRatio) {
+                    bestRatio = ratio;
+                    best = proc;
+                }
+            }
+            state.readyQueue = state.readyQueue.filter(p => p !== best);
+            return { process: best, ratio: bestRatio };
+        }
+
+        function renderAll() {
+            if (!simulation) {
+                return;
+            }
+            renderGantt(simulation);
+            renderLog(simulation.log);
+            if (simulation.finished) {
+                renderResults(simulation.processes, simulation.time);
+            }
+        }
+
+        function renderGantt(state) {
+            const maxTime = state.timeline.length ? state.timeline[state.timeline.length - 1].end : 0;
+            const chartWidth = ganttChart.clientWidth || ganttChart.offsetWidth || 600;
+            const availableWidth = Math.max(chartWidth - LABEL_WIDTH - 16, 120);
+            const scale = maxTime > 0 ? Math.min(availableWidth / Math.max(maxTime, 1), 40) : 24;
+            const timelineWidth = maxTime > 0 ? Math.max(maxTime * scale, 1) : availableWidth;
+
+            ganttChart.innerHTML = '';
+
+            const rowIds = state.processes.map(p => p.id);
+            if (state.timeline.some(segment => segment.label === 'IDLE')) {
+                rowIds.push('IDLE');
+            }
+
+            const rowsWrapper = document.createElement('div');
+            rowsWrapper.className = 'flex flex-col gap-3';
+
+            for (const rowId of rowIds) {
+                const row = document.createElement('div');
+                row.className = 'flex items-center gap-3';
+
+                const label = document.createElement('div');
+                label.className = 'text-xs font-semibold text-slate-200 text-right';
+                label.style.width = `${LABEL_WIDTH}px`;
+                label.textContent = rowId === 'IDLE' ? 'Idle' : rowId;
+
+                const track = document.createElement('div');
+                track.className = 'relative rounded border border-slate-700 bg-slate-950/60 overflow-hidden';
+                track.style.height = `${ROW_HEIGHT - 10}px`;
+                track.style.width = `${timelineWidth}px`;
+
+                const segments = state.timeline.filter(segment => segment.label === rowId);
+                if (!segments.length) {
+                    const emptyHint = document.createElement('div');
+                    emptyHint.className = 'absolute inset-0 flex items-center justify-center text-[11px] text-slate-500';
+                    emptyHint.textContent = maxTime > 0 ? '—' : 'Pending execution';
+                    track.appendChild(emptyHint);
+                } else {
+                    for (const segment of segments) {
+                        const block = document.createElement('div');
+                        block.className = 'absolute inset-y-0 flex items-center justify-center text-[11px] font-semibold';
+                        block.style.left = `${segment.start * scale}px`;
+                        block.style.width = `${Math.max(segment.duration * scale, 2)}px`;
+                        block.style.backgroundColor = segment.label === 'IDLE' ? '#475569' : segment.color;
+                        block.style.color = segment.label === 'IDLE' ? '#e2e8f0' : '#0f172a';
+                        block.title = `${segment.label}: ${segment.start.toFixed(1)}-${segment.end.toFixed(1)} ms`;
+                        block.textContent = segment.duration * scale > 32 ? segment.label : '';
+                        track.appendChild(block);
+                    }
+                }
+
+                row.appendChild(label);
+                row.appendChild(track);
+                rowsWrapper.appendChild(row);
+            }
+
+            if (state.timeline.length === 0) {
+                const helper = document.createElement('p');
+                helper.className = 'text-sm text-slate-400 mb-2';
+                helper.textContent = 'Step the simulation to populate the timeline.';
+                ganttChart.appendChild(helper);
+            }
+
+            ganttChart.appendChild(rowsWrapper);
+            renderTimeAxis(state, scale, timelineWidth, maxTime);
+        }
+
+        function renderTimeAxis(state, scale, timelineWidth, maxTime) {
+            timeAxis.innerHTML = '';
+
+            const container = document.createElement('div');
+            container.className = 'flex items-center h-full gap-3 px-1';
+
+            const spacer = document.createElement('div');
+            spacer.style.width = `${LABEL_WIDTH}px`;
+            container.appendChild(spacer);
+
+            const axisTrack = document.createElement('div');
+            axisTrack.className = 'relative h-8 bg-slate-900/80 border border-slate-700 rounded';
+            axisTrack.style.width = `${timelineWidth}px`;
+
+            if (maxTime === 0) {
+                const notice = document.createElement('div');
+                notice.className = 'absolute inset-0 flex items-center justify-center text-xs text-slate-400';
+                notice.textContent = 'Timeline updates after the first execution.';
+                axisTrack.appendChild(notice);
+            } else {
+                const baseLine = document.createElement('div');
+                baseLine.className = 'absolute bottom-1 left-0 right-0 h-px bg-slate-600';
+                axisTrack.appendChild(baseLine);
+
+                const ticks = new Set([0, maxTime]);
+                state.timeline.forEach(segment => {
+                    ticks.add(segment.start);
+                    ticks.add(segment.end);
+                });
+                const sortedTicks = Array.from(ticks).sort((a, b) => a - b);
+
+                for (const tick of sortedTicks) {
+                    const left = tick * scale;
+
+                    const tickLine = document.createElement('div');
+                    tickLine.className = 'absolute bottom-1 w-px bg-slate-500';
+                    tickLine.style.left = `${left}px`;
+                    tickLine.style.height = '40%';
+                    axisTrack.appendChild(tickLine);
+
+                    const label = document.createElement('div');
+                    label.className = 'absolute text-[11px] text-slate-200';
+                    label.style.left = `${left}px`;
+                    label.style.bottom = '50%';
+                    if (tick === 0) {
+                        label.style.transform = 'translateX(0)';
+                    } else if (Math.abs(tick - maxTime) < 1e-6) {
+                        label.style.transform = 'translateX(-100%)';
+                    } else {
+                        label.style.transform = 'translateX(-50%)';
+                    }
+                    label.textContent = `${Math.round(tick)}`;
+                    axisTrack.appendChild(label);
+                }
+            }
+
+            container.appendChild(axisTrack);
+            timeAxis.appendChild(container);
+        }
+
+        function renderLog(logEntries) {
+            eventLog.innerText = logEntries.join('\n');
+            eventLog.scrollTop = eventLog.scrollHeight;
+        }
+
+        function renderResults(processes, currentTime) {
+            resultsPanel.classList.remove('hidden');
+            resultsBody.innerHTML = '';
+            let totalTurnaround = 0;
+            let totalWaiting = 0;
+            const sorted = [...processes].sort((a, b) => a.id.localeCompare(b.id));
+            for (const proc of sorted) {
+                const row = document.createElement('tr');
+                row.className = 'bg-slate-900/60';
+                const completion = proc.completion ?? currentTime;
+                const turnaround = completion - proc.arrival;
+                const waiting = turnaround - proc.burst;
+                totalTurnaround += turnaround;
+                totalWaiting += waiting;
+                row.innerHTML = `
+                    <td class="px-3 py-2">${proc.id}</td>
+                    <td class="px-3 py-2">${Math.round(completion)}</td>
+                    <td class="px-3 py-2">${Math.round(turnaround)}</td>
+                    <td class="px-3 py-2">${Math.round(waiting)}</td>
+                `;
+                resultsBody.appendChild(row);
+            }
+            const count = processes.length;
+            avgTurnaround.innerText = (totalTurnaround / count).toFixed(2);
+            avgWaiting.innerText = (totalWaiting / count).toFixed(2);
+        }
+
+        function renderEmptyChart() {
+            ganttChart.innerHTML = '<div class="flex items-center justify-center text-sm text-slate-400 min-h-[4rem]">Run or step the simulation to see activity.</div>';
+            timeAxis.innerHTML = '<div class="flex items-center justify-center text-xs text-slate-500 h-full">Timeline appears once execution begins.</div>';
+        }
+
+        function renderStatus(message) {
+            statusText.innerText = `Status: ${message}`;
+        }
+    </script>
+</body>
+</html>
